@@ -15,18 +15,20 @@ export type BoardEvent<T> = {
     match?: Match<T>
 }
 
-export type BoardListener<T> = (data: BoardEvent<T>) => void
+export type BoardListener<T> = (e: BoardEvent<T>) => any
 
 export class Board<T> {
+    generator: Generator<T>;
     height: number
     width: number
     //check if this type is correct
     pieces: T[][]
 
-    listeners: BoardListener<T>[] = [];
-
+    //listeners: BoardListener<T>[] = [];
+    listener: BoardListener<T> | undefined;
 
     constructor(generator: Generator<T>,  width: number, height: number) {
+        this.generator = generator;
         this.height = height;
         this.width = width;
         let pieces = new Array(height);
@@ -198,33 +200,58 @@ export class Board<T> {
         return undefined;
     }
 
-    eventHandler(event: BoardEvent<T>) {
-        if(event.kind == 'Match') {
-            this.removePieces(event.match?.positions);
-            //this.refill([1,2,3,4,5,6,7,8,9,10]);
-        }
-    }
-
     removePieces(positions: Position[] | undefined) {
         if(positions == undefined) {
             return;
         }
-        for(let i = 0; i < positions.length; i++) {
-            this.pieces[positions[i].row][positions[i].col] = undefined;
+        // for(let i = 0; i < positions.length; i++) {
+        //     this.pieces[positions[i].row][positions[i].col] = undefined;
+        // }
+        for (let i = this.height - 1; i >= 0; i--) {
+            for (let j = 0; j < this.width; j++) {
+                if (!this.pieces[i][j]) {
+                    for (let k = i; k > 0; k--) {
+                        this.pieces[i][j] = this.pieces[k - 1][j];
+                        this.pieces[k - 1][j] = null;
+                        if (this.pieces[i][j]) break;
+                    }
+                }
+            }
         }
     }
 
-    refill(newPieces: Array<T>) {
-        //what will happen if the starting index is not 0?
-        for(let col = 0; col < newPieces.length - 1; col++) {
-            this.pieces[0][col] = newPieces[col];
+    refill() {
+        for(let row = 0; row < this.height; row++) {
+            for(let col = 0; col < this.width; col++) {
+                if(this.pieces[row][col] == undefined) {
+                    this.pieces[row][col] = this.generator.next();
+                }
+            }
         }
     }
 
 
     //listener --> is the object that will be notified when the event occurs
     addListener(listener: BoardListener<T>) {
-        this.listeners.push(listener);
+        //this.listeners.push(listener);
+        this.listener = listener;
+    }
+
+    //onMatch(listener: MatchListener<T>) {
+    private eventHandler<T>() {
+        const match = this.findMatch();
+        if(this.listener) {
+            this.listener({kind: 'Match', match: match})
+        }
+        match.positions.forEach(position => {
+            this.pieces[position.row][position.col] = undefined;
+        });
+        this.removePieces(match.positions);
+        this.refill();
+        if(this.listener) {
+            this.listener({kind: 'Refill'})
+        }
+
     }
 
     piece(p: Position): T | undefined {
@@ -274,7 +301,13 @@ export class Board<T> {
             let secondPiece = this.piece(second);
             this.pieces[first.row][first.col] = secondPiece;
             this.pieces[second.row][second.col] = firstPiece;
+            this.eventHandler();
             
+            // const event = new CustomEvent<BoardEvent<T>>('boardListener', {detail: {kind: 'Match', match: this.findMatch()}});
+            // dispatchEvent(event);
+
+            //const event = new BoardEvent('Match', this.findMatch());
+            //this.boardListener(event);
         }
     }
 }

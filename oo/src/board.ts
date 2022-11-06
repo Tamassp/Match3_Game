@@ -10,14 +10,20 @@ export type Match<T> = {
     positions: Position[]
 }
 
-export type BoardEvent<T> = {}
+export type BoardEvent<T> = {
+    kind: 'Match' | 'Refill'
+    match?: Match<T>
+}
 
-export type BoardListener<T> = {}
+export type BoardListener<T> = (data: BoardEvent<T>) => void
 
 export class Board<T> {
     height: number
     width: number
+    //check if this type is correct
     pieces: T[][]
+
+    listeners: BoardListener<T>[] = [];
 
 
     constructor(generator: Generator<T>,  width: number, height: number) {
@@ -39,7 +45,7 @@ export class Board<T> {
         this.pieces[first.row][first.col] = secondPiece;
         this.pieces[second.row][second.col] = firstPiece;
     }
-    match(firstPosition: Position, secondPosition: Position ): Match<T> | undefined {
+    /*match(firstPosition: Position, secondPosition: Position ): Match<T> | undefined {
         let piece: T = this.piece(firstPosition);
         this.swap(firstPosition, secondPosition);
         let match: Boolean = false;
@@ -120,10 +126,105 @@ export class Board<T> {
         else {
             return undefined;
         }
+    }*/
+
+    findMatch (): Match<T> | undefined {
+        let match: Boolean = false;
+        let positions: Position[] = [];
+        let piece: T;
+        let steps = 0;
+
+        const reset = () => {
+            positions = [];
+            steps = 0;
+        }
+        //HORIZONTAL CHECK
+        for(let row = 0; row < this.height; row++) {
+            let lastPiece = this.piece({row: row, col: 0});
+            for(let col = 1; col < this.width; col++) {
+                if(this.piece({row: row, col: col}) == lastPiece) {
+                    positions.push({row: row, col: col-1});
+                    steps++;
+                    if(steps >= 2) {
+                        piece = lastPiece;
+                        positions.push({row: row, col: col});
+                        return {matched: piece, positions: positions};
+                    }
+                }
+                else {
+                    if(steps >= 2) {
+                        piece = lastPiece;
+                        return {matched: piece, positions: positions};
+                    }
+                    else {
+                        positions = [];
+                        steps = 0;
+                    }
+                }
+                lastPiece = this.piece({row: row, col: col});
+                
+            }
+            reset();
+        }
+        
+        //VERTICAL CHECK
+        piece = undefined;
+        reset();
+        for(let col = 0; col < this.width; col++) {
+            let lastPiece = this.piece({row: 0, col: col});
+            for(let row = 1; row < this.height; row++) {
+                if(this.piece({row: row, col: col}) == lastPiece) {
+                    positions.push({row: row -1, col: col});
+                    steps++;
+                    if(steps >= 2) {
+                        piece = lastPiece;
+                        positions.push({row: row, col: col});
+                        return {matched: piece, positions: positions};
+                    }
+                }
+                else {
+                    if(steps >= 2) {
+                        piece = lastPiece;
+                        return {matched: piece, positions: positions};
+                    }
+                    else {
+                        reset();
+                    }
+                }
+                lastPiece = this.piece({row: row, col: col});
+            }
+            reset();
+        }
+        return undefined;
+    }
+
+    eventHandler(event: BoardEvent<T>) {
+        if(event.kind == 'Match') {
+            this.removePieces(event.match?.positions);
+            //this.refill([1,2,3,4,5,6,7,8,9,10]);
+        }
+    }
+
+    removePieces(positions: Position[] | undefined) {
+        if(positions == undefined) {
+            return;
+        }
+        for(let i = 0; i < positions.length; i++) {
+            this.pieces[positions[i].row][positions[i].col] = undefined;
+        }
+    }
+
+    refill(newPieces: Array<T>) {
+        //what will happen if the starting index is not 0?
+        for(let col = 0; col < newPieces.length - 1; col++) {
+            this.pieces[0][col] = newPieces[col];
+        }
     }
 
 
+    //listener --> is the object that will be notified when the event occurs
     addListener(listener: BoardListener<T>) {
+        this.listeners.push(listener);
     }
 
     piece(p: Position): T | undefined {
@@ -148,22 +249,22 @@ export class Board<T> {
         if(first.row != second.row && first.col != second.col) {
             return false;
         }
-
-        // let firstPiece = this.piece(first);
-        // let secondPiece = this.piece(second);
-        // console.log("FIRST");
-        // console.log(this.match(first, second));
-        // console.log("SECOND");
-        // console.log(this.match(second, first));
         
         //does not allow moves that make no matches
-        if((this.match(first, second) == undefined) && (this.match(second, first)== undefined)) {
+        this.swap(first, second);
+        if(this.findMatch() === undefined) {
+            this.swap(first, second);
             return false;
         }
-
+        else {
+            console.log("MATCH:");
+            console.log(this.findMatch());
+            this.swap(first, second);
+            return true;
+        }
+        
         //if none of the above conditions are met, the move is allowed
         return true;
-
 
     }
     
@@ -173,6 +274,7 @@ export class Board<T> {
             let secondPiece = this.piece(second);
             this.pieces[first.row][first.col] = secondPiece;
             this.pieces[second.row][second.col] = firstPiece;
+            
         }
     }
 }
